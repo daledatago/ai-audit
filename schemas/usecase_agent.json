@@ -1,1 +1,39 @@
+{
+  "$id": "https://daledatago.local/schemas/usecase_agent.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Use Case Agent Output",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["0.1"] },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "useCases": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "properties": {
+          "useCaseId": { "type": "string", "minLength": 1 },
+          "workflowName": { "type": "string", "minLength": 1 },
+          "problemStatement": { "type": "string", "minLength": 1 },
+          "whoBenefits": { "type": "array", "items": { "type": "string" } },
+          "currentProcessSummary": { "type": "string" },
+          "dataNeeded": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "systemsTouched": { "type": "array", "items": { "type": "string" } },
+          "constraints": { "type": "array", "items": { "type": "string" } },
+          "risks": { "type": "array", "items": { "type": "string" } },
+          "successMetrics": { "type": "array", "items": { "type": "string" } },
+          "citations": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "common.json#/$defs/Citation" }
+          }
+        },
+        "required": ["useCaseId", "workflowName", "problemStatement", "dataNeeded", "citations"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schemaVersion", "workspaceId", "useCases"],
+  "additionalProperties": false
+}
 
