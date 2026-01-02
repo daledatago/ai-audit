@@ -11,14 +11,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate JSON schemas (basic)
+      - name: Validate JSON schemas (debug)
         run: |
           python - << 'PY'
           import json, glob
-          for f in glob.glob("schemas/*.json"):
-              with open(f, "r", encoding="utf-8") as fh:
-                  json.load(fh)
-              print("OK", f)
+          files = sorted(glob.glob("schemas/*.json"))
+          if not files:
+              raise SystemExit("No schemas found in schemas/*.json")
+      
+          for f in files:
+              try:
+                  with open(f, "r", encoding="utf-8") as fh:
+                      data = fh.read()
+                  json.loads(data)
+                  print("OK", f)
+              except Exception as e:
+                  print("\n❌ JSON validation failed for:", f)
+                  print("Error:", repr(e))
+                  print("\nFirst 200 chars:\n", data[:200])
+                  raise
           PY
 
       - name: Validate YAML files (question bank + prompts)
