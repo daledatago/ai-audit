@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  validate-specs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate JSON schemas (basic)
+        run: |
+          python - << 'PY'
+          import json, glob
+          for f in glob.glob("schemas/*.json"):
+              with open(f, "r", encoding="utf-8") as fh:
+                  json.load(fh)
+              print("OK", f)
+          PY
+
+      - name: Validate YAML files (question bank + prompts)
+        run: |
+          python - << 'PY'
+          import glob
+          import yaml
+          files = glob.glob("question_bank/*.y*ml") + glob.glob("prompts/*.y*ml")
+          for f in files:
+              with open(f, "r", encoding="utf-8") as fh:
+                  yaml.safe_load(fh)
+              print("OK", f)
+          PY
+        # install PyYAML
+      - name: Install PyYAML
+        run: pip install pyyaml
