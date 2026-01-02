@@ -25,18 +25,9 @@
               "measurement_value_tracking"
             ]
           },
-          "enablers": {
-            "type": "array",
-            "items": { "$ref": "#/$defs/Finding" }
-          },
-          "gaps": {
-            "type": "array",
-            "items": { "$ref": "#/$defs/Finding" }
-          },
-          "risks": {
-            "type": "array",
-            "items": { "$ref": "#/$defs/Finding" }
-          }
+          "enablers": { "type": "array", "items": { "$ref": "#/$defs/Finding" } },
+          "gaps": { "type": "array", "items": { "$ref": "#/$defs/Finding" } },
+          "risks": { "type": "array", "items": { "$ref": "#/$defs/Finding" } }
         },
         "required": ["dimension", "enablers", "gaps", "risks"],
         "additionalProperties": false
@@ -58,4 +49,10 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "common.json#/$defs/Citation" }
-
+        }
+      },
+      "required": ["type", "title", "confidence", "citations"],
+      "additionalProperties": false
+    }
+  }
+}
