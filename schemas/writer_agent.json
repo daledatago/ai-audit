@@ -44,7 +44,10 @@
           "required": ["type", "data"],
           "additionalProperties": false
         },
-        "citations": { "type": "array", "items": { "$ref": "common.json#/$defs/Citation" } }
+        "citations": {
+          "type": "array",
+          "items": { "$ref": "common.json#/$defs/Citation" }
+        }
       },
       "required": ["slideId", "title"],
       "additionalProperties": false
@@ -68,7 +71,10 @@
         "sectionId": { "type": "string", "minLength": 1 },
         "heading": { "type": "string", "minLength": 1 },
         "contentMarkdown": { "type": "string", "minLength": 1 },
-        "citations": { "type": "array", "items": { "$ref": "common.json#/$defs/Citation" } }
+        "citations": {
+          "type": "array",
+          "items": { "$ref": "common.json#/$defs/Citation" }
+        }
       },
       "required": ["sectionId", "heading", "contentMarkdown"],
       "additionalProperties": false
@@ -89,5 +95,16 @@
               "acceptanceCriteria": { "type": "string" },
               "ownerRole": { "type": "string" },
               "dependencies": { "type": "string" },
-              "riskN
-
+              "riskNotes": { "type": "string" },
+              "evidenceLinks": { "type": "string" }
+            },
+            "required": ["epic", "story", "description"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["format", "rows"],
+      "additionalProperties": false
+    }
+  }
+}
