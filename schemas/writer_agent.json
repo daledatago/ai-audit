@@ -1,1 +1,93 @@
+{
+  "$id": "https://daledatago.local/schemas/writer_agent.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Writer Agent Output",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["0.1"] },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "deck": { "$ref": "#/$defs/Deck" },
+    "architecturePack": { "$ref": "#/$defs/ArchitecturePack" },
+    "backlog": { "$ref": "#/$defs/Backlog" }
+  },
+  "required": ["schemaVersion", "workspaceId", "deck", "architecturePack", "backlog"],
+  "additionalProperties": false,
+  "$defs": {
+    "Deck": {
+      "type": "object",
+      "properties": {
+        "templateId": { "type": "string", "enum": ["deck_v0"] },
+        "slides": {
+          "type": "array",
+          "minItems": 8,
+          "items": { "$ref": "#/$defs/Slide" }
+        }
+      },
+      "required": ["templateId", "slides"],
+      "additionalProperties": false
+    },
+    "Slide": {
+      "type": "object",
+      "properties": {
+        "slideId": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "bullets": { "type": "array", "items": { "type": "string" } },
+        "visual": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["scorecard", "heatmap", "portfolio_table", "pilot_canvas", "roadmap"]
+            },
+            "data": { "type": "object" }
+          },
+          "required": ["type", "data"],
+          "additionalProperties": false
+        },
+        "citations": { "type": "array", "items": { "$ref": "common.json#/$defs/Citation" } }
+      },
+      "required": ["slideId", "title"],
+      "additionalProperties": false
+    },
+    "ArchitecturePack": {
+      "type": "object",
+      "properties": {
+        "templateId": { "type": "string", "enum": ["archpack_v0"] },
+        "sections": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/Section" }
+        }
+      },
+      "required": ["templateId", "sections"],
+      "additionalProperties": false
+    },
+    "Section": {
+      "type": "object",
+      "properties": {
+        "sectionId": { "type": "string", "minLength": 1 },
+        "heading": { "type": "string", "minLength": 1 },
+        "contentMarkdown": { "type": "string", "minLength": 1 },
+        "citations": { "type": "array", "items": { "$ref": "common.json#/$defs/Citation" } }
+      },
+      "required": ["sectionId", "heading", "contentMarkdown"],
+      "additionalProperties": false
+    },
+    "Backlog": {
+      "type": "object",
+      "properties": {
+        "format": { "type": "string", "enum": ["csv_rows"] },
+        "rows": {
+          "type": "array",
+          "minItems": 10,
+          "items": {
+            "type": "object",
+            "properties": {
+              "epic": { "type": "string", "minLength": 1 },
+              "story": { "type": "string", "minLength": 1 },
+              "description": { "type": "string", "minLength": 1 },
+              "acceptanceCriteria": { "type": "string" },
+              "ownerRole": { "type": "string" },
+              "dependencies": { "type": "string" },
+              "riskN
 
