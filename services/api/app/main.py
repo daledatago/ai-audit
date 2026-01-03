@@ -1,3 +1,4 @@
+from .run_store import persist_run_meta, persist_inputs, persist_stage_snapshot, append_event
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -68,6 +69,19 @@ class ExportRequest(BaseModel):
     version: str = "v0.1"
 
 # ---------- Helpers ----------
+def fetch_documents(workspace_id: str):
+    return fetch_all(
+        "SELECT id, filename, status, uploaded_at FROM documents WHERE workspace_id=? ORDER BY uploaded_at DESC",
+        (workspace_id,)
+    )
+
+def fetch_interviews(workspace_id: str):
+    return fetch_all(
+        "SELECT id, stakeholder_name, role, function, status, created_at, audio_path, transcript_path "
+        "FROM interviews WHERE workspace_id=? ORDER BY created_at DESC",
+        (workspace_id,)
+    )
+
 def paginated(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {"items": items, "total": len(items), "page": 1, "pageSize": 50}
 
