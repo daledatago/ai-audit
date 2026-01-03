@@ -22,6 +22,10 @@ STAGES = [
     "export",
 ]
 
+@app.get("/")
+def root():
+    return {"ok": True, "service": "ai-audit-api"}
+
 def api_error(message: str, status: int = 400, code: str = "bad_request"):
     return JSONResponse(status_code=status, content={"message": message, "code": code})
 
