@@ -1,3 +1,10 @@
+<<<<<<< HEAD
 ﻿fastapi==0.115.6
 uvicorn[standard]==0.32.1
 python-multipart==0.0.12
+=======
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+
+>>>>>>> f19d1e4a863fe49bcc7440f7a8294fe9a8fe6cb3
