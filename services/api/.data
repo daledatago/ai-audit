@@ -1,1 +1,4 @@
-
+.data/workspaces/{workspaceId}/runs/{runId}/
+  transcripts/
+  artefacts/
+  exports/
