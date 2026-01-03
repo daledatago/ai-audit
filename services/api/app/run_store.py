@@ -97,7 +97,6 @@ def refresh_run_files(workspace_id: str, run_id: str) -> None:
         "SELECT name, status FROM pipeline_stages WHERE run_id=? ORDER BY id ASC",
         (run_id,)
     )
-    # stages.json in your repo is a plain list
     (base / "stages.json").write_text(json.dumps(stages, indent=2), encoding="utf-8")
 
     logs_dir = base / "logs"
