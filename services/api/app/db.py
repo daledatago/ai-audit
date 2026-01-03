@@ -96,6 +96,16 @@ def init_db() -> None:
         )
         """)
 
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        retention_days INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+        )
+        """)
+
         conn.commit()
 
 def execute(sql: str, params: Tuple[Any, ...] = ()) -> None:
