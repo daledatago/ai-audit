@@ -1,5 +1,5 @@
-services/api/.venv/
 services/api/.data/
+services/api/.venv/
 apps/web/node_modules/
 apps/web/dist/
 apps/web/.env
