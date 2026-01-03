@@ -1,4 +1,3 @@
-from .run_store import persist_run_meta, persist_inputs, persist_stage_snapshot, append_event
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -10,6 +9,7 @@ import time
 
 from .db import init_db, execute, fetch_one, fetch_all
 from .storage import now_iso, save_document, save_export
+from .run_store import persist_run_meta, persist_inputs, persist_stage_snapshot, append_event
 
 STAGES = [
     "transcribe",
@@ -348,7 +348,28 @@ def run_pipeline(workspace_id: str, req: PipelineRunRequest, background: Backgro
     )
     for s in STAGES:
         execute("INSERT INTO pipeline_stages (run_id, name, status) VALUES (?,?,?)", (run_id, s, "queued"))
+      
+    docs = fetch_documents(workspace_id)
+    itvs = fetch_interviews(workspace_id)
 
+    persist_run_meta(workspace_id, run_id, {
+        "runId": run_id,
+        "workspaceId": workspace_id,
+        "mode": req.mode,
+        "createdAt": now_iso(),
+        "status": "queued",
+    })
+
+    persist_inputs(workspace_id, run_id, documents=docs, interviews=itvs)
+
+    # initial stage snapshot (queued)
+    persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
+
+    append_event(workspace_id, run_id, "run", "info", "Run created and inputs snapshotted", {
+        "documents": len(docs),
+        "interviews": len(itvs),
+    })
+   
     background.add_task(pipeline_worker, workspace_id, run_id)
 
     stages = stages_for_run(run_id)
