@@ -13,12 +13,16 @@ def get_conn() -> sqlite3.Connection:
 def init_db() -> None:
     with get_conn() as conn:
         conn.execute("""
-        CREATE TABLE IF NOT EXISTS workspaces (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            status TEXT NOT NULL,
-            retention_days INTEGER NOT NULL,
-            created_at TEXT NOT NULL
+        CREATE TABLE IF NOT EXISTS run_artifacts (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          kind TEXT NOT NULL,          -- e.g. evidence_map, readiness
+          schema_id TEXT,              -- optional
+          status TEXT NOT NULL,        -- created|validated|failed
+          created_at TEXT NOT NULL,
+          path TEXT NOT NULL
         )
         """)
 
