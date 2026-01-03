@@ -64,10 +64,16 @@ def refresh_run_files(workspace_id: str, run_id: str) -> None:
     })
 def refresh_run_files(workspace_id: str, run_id: str) -> None:
     """
-    Re-sync run.json + stages.json from SQLite, and append a log event.
+    Re-sync run.json + stages.json from SQLite and append an event.
     Safe to call repeatedly.
     """
-    from .db import fetch_one, fetch_all  # local import avoids circular imports
+    import json
+    from pathlib import Path
+    from .db import DB_PATH, fetch_one, fetch_all
+    from .storage import now_iso
+
+    base: Path = DB_PATH.parent / "workspaces" / workspace_id / "runs" / run_id
+    base.mkdir(parents=True, exist_ok=True)
 
     run = fetch_one(
         "SELECT run_id, workspace_id, mode, status, created_at, updated_at "
@@ -77,24 +83,30 @@ def refresh_run_files(workspace_id: str, run_id: str) -> None:
     if not run:
         return
 
-    persist_run_meta(workspace_id, run_id, {
+    run_json = {
         "runId": run["run_id"],
         "workspaceId": run["workspace_id"],
         "mode": run.get("mode"),
         "createdAt": run.get("created_at"),
         "status": run.get("status"),
-    })
+        "updatedAt": now_iso(),
+    }
+    (base / "run.json").write_text(json.dumps(run_json, indent=2), encoding="utf-8")
 
     stages = fetch_all(
         "SELECT name, status FROM pipeline_stages WHERE run_id=? ORDER BY id ASC",
         (run_id,)
     )
-    # Your current stages.json is a plain list, so persist the list directly
-    persist_stage_snapshot(workspace_id, run_id, stages)
+    # stages.json in your repo is a plain list
+    (base / "stages.json").write_text(json.dumps(stages, indent=2), encoding="utf-8")
 
-    append_event(workspace_id, run_id, {
+    logs_dir = base / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    evt = {
+        "ts": now_iso(),
         "stage": "run",
         "level": "info",
         "msg": "Refreshed run.json + stages.json from DB",
-    })
-   
+    }
+    with (logs_dir / "events.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(evt) + "\n")
