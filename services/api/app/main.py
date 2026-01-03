@@ -1,3 +1,4 @@
+from .run_store import refresh_run_files
 from .run_store import persist_run_meta, persist_stage_snapshot, append_event
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,6 +136,8 @@ def pipeline_worker(workspace_id: str, run_id: str):
 
     # Simple deterministic progression for v0
     update_run_status(run_id, "running")
+    refresh_run_files(workspace_id, run_id)
+
     for s in STAGES:
         # if cancelled/failed, stop
         run = fetch_one("SELECT status FROM pipeline_runs WHERE run_id=?", (run_id,))
@@ -142,11 +145,13 @@ def pipeline_worker(workspace_id: str, run_id: str):
             return
 
         set_stage_status(run_id, s, "running")
+        refresh_run_files(workspace_id, run_id)
         persist_run_meta(workspace_id, run_id, {"status": "running"})
         append_event(workspace_id, run_id, {"type": "run.started"})
         time.sleep(1.2)  # simulate work
 
         set_stage_status(run_id, s, "done")
+        refresh_run_files(workspace_id, run_id)
         persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
         append_event(workspace_id, run_id, {"type": "stage.started", "stage": s})
 
@@ -368,6 +373,8 @@ def run_pipeline(workspace_id: str, req: PipelineRunRequest, background: Backgro
     persist_run_meta(workspace_id, run_id, {"status": "queued", "mode": req.mode})
     persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
     append_event(workspace_id, run_id, {"type": "run.queued"})
+    refresh_run_files(workspace_id, run_id)
+
 
 
     for s in STAGES:
@@ -376,7 +383,9 @@ def run_pipeline(workspace_id: str, req: PipelineRunRequest, background: Backgro
     itvs = fetch_interviews(workspace_id)
     persist_run_meta(workspace_id, run_id, {"status": "queued", "mode": req.mode})
     persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
-    ppend_event(workspace_id, run_id, {"type": "run.queued"})
+    append_event(workspace_id, run_id, {"type": "run.queued"})
+    refresh_run_files(workspace_id, run_id)
+
 
     persist_run_meta(workspace_id, run_id, {
         "runId": run_id,

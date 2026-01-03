@@ -5,6 +5,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from .db import DB_PATH
 from .storage import now_iso
+from typing import Any, Dict, List
+from .db import fetch_one, fetch_all
+from .storage import now_iso
+from .run_store import persist_run_meta, persist_stage_snapshot, append_event  # if in same file remove this line
+
 
 # Base folder: services/api/.data/workspaces/{workspaceId}/runs/{runId}/...
 def run_dir(workspace_id: str, run_id: str) -> Path:
@@ -29,3 +34,67 @@ def append_event(workspace_id: str, run_id: str, event: Dict[str, Any]) -> None:
     line = json.dumps({**event, "ts": now_iso()}, ensure_ascii=False)
     with (logs_dir / "events.jsonl").open("a", encoding="utf-8") as f:
         f.write(line + "\n")
+def refresh_run_files(workspace_id: str, run_id: str) -> None:
+    run = fetch_one(
+        "SELECT run_id, workspace_id, mode, status, created_at, updated_at "
+        "FROM pipeline_runs WHERE run_id=?",
+        (run_id,)
+    )
+    if not run:
+        return
+
+    persist_run_meta(workspace_id, run_id, {
+        "runId": run["run_id"],
+        "workspaceId": run["workspace_id"],
+        "mode": run["mode"],
+        "createdAt": run["created_at"],
+        "status": run["status"],
+    })
+
+    stages = fetch_all(
+        "SELECT name, status FROM pipeline_stages WHERE run_id=? ORDER BY id ASC",
+        (run_id,)
+    )
+    persist_stage_snapshot(workspace_id, run_id, stages)
+
+    append_event(workspace_id, run_id, {
+        "stage": "run",
+        "level": "info",
+        "msg": "Refreshed run/stages snapshot from DB",
+    })
+def refresh_run_files(workspace_id: str, run_id: str) -> None:
+    """
+    Re-sync run.json + stages.json from SQLite, and append a log event.
+    Safe to call repeatedly.
+    """
+    from .db import fetch_one, fetch_all  # local import avoids circular imports
+
+    run = fetch_one(
+        "SELECT run_id, workspace_id, mode, status, created_at, updated_at "
+        "FROM pipeline_runs WHERE run_id=?",
+        (run_id,)
+    )
+    if not run:
+        return
+
+    persist_run_meta(workspace_id, run_id, {
+        "runId": run["run_id"],
+        "workspaceId": run["workspace_id"],
+        "mode": run.get("mode"),
+        "createdAt": run.get("created_at"),
+        "status": run.get("status"),
+    })
+
+    stages = fetch_all(
+        "SELECT name, status FROM pipeline_stages WHERE run_id=? ORDER BY id ASC",
+        (run_id,)
+    )
+    # Your current stages.json is a plain list, so persist the list directly
+    persist_stage_snapshot(workspace_id, run_id, stages)
+
+    append_event(workspace_id, run_id, {
+        "stage": "run",
+        "level": "info",
+        "msg": "Refreshed run.json + stages.json from DB",
+    })
+   
