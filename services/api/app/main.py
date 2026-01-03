@@ -1,3 +1,4 @@
+from .run_store import persist_run_meta, persist_stage_snapshot, append_event
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -129,6 +130,9 @@ def update_run_status(run_id: str, status: str):
     )
 
 def pipeline_worker(workspace_id: str, run_id: str):
+    persist_run_meta(workspace_id, run_id, {"status": "running"})
+    append_event(workspace_id, run_id, {"type": "run.started"})
+
     # Simple deterministic progression for v0
     update_run_status(run_id, "running")
     for s in STAGES:
@@ -138,9 +142,14 @@ def pipeline_worker(workspace_id: str, run_id: str):
             return
 
         set_stage_status(run_id, s, "running")
+        persist_run_meta(workspace_id, run_id, {"status": "running"})
+        append_event(workspace_id, run_id, {"type": "run.started"})
         time.sleep(1.2)  # simulate work
 
         set_stage_status(run_id, s, "done")
+        persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
+        append_event(workspace_id, run_id, {"type": "stage.started", "stage": s})
+
 
     # Create placeholder exports on completion
     deck_id, deck_path = save_export(workspace_id, "deck", b'{"deck":"placeholder"}\n', "deck.json")
@@ -170,6 +179,8 @@ def pipeline_worker(workspace_id: str, run_id: str):
     )
 
     update_run_status(run_id, "succeeded")
+    persist_run_meta(workspace_id, run_id, {"status": "succeeded"})
+    append_event(workspace_id, run_id, {"type": "run.succeeded"})
 
 # ---------- Workspace API (matches your UI) ----------
 @app.get("/workspaces")
@@ -338,6 +349,10 @@ def cancel_pipeline(workspace_id: str):
     )
     stages = stages_for_run(run["run_id"])
     return {"data": {"runId": run["run_id"], "status": "failed", "stages": stages}}
+    append_event(workspace_id, run["run_id"], {"type": "run.failed", "reason": "cancel"})
+    persist_run_meta(workspace_id, run["run_id"], {"status": "failed"})
+    persist_stage_snapshot(workspace_id, run["run_id"], stages_for_run(run["run_id"]))
+
 
 # Canonical endpoint (what we want long term)
 @app.post("/workspaces/{workspace_id}/pipeline/run")
@@ -350,11 +365,18 @@ def run_pipeline(workspace_id: str, req: PipelineRunRequest, background: Backgro
         "INSERT INTO pipeline_runs (run_id, workspace_id, mode, status, created_at, updated_at) VALUES (?,?,?,?,?,?)",
         (run_id, workspace_id, req.mode, "queued", now, now)
     )
+    persist_run_meta(workspace_id, run_id, {"status": "queued", "mode": req.mode})
+    persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
+    append_event(workspace_id, run_id, {"type": "run.queued"})
+
+
     for s in STAGES:
         execute("INSERT INTO pipeline_stages (run_id, name, status) VALUES (?,?,?)", (run_id, s, "queued"))
-      
     docs = fetch_documents(workspace_id)
     itvs = fetch_interviews(workspace_id)
+    persist_run_meta(workspace_id, run_id, {"status": "queued", "mode": req.mode})
+    persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
+    ppend_event(workspace_id, run_id, {"type": "run.queued"})
 
     persist_run_meta(workspace_id, run_id, {
         "runId": run_id,
