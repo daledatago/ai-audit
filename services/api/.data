@@ -1,0 +1,22 @@
+services/api/.data/
+  ai_audit.sqlite3
+  workspaces/{workspaceId}/
+    runs/{runId}/
+      run.json
+      stages.json
+      inputs/
+        documents.json
+        interviews.json
+      artefacts/
+        evidence_map_agent.json
+        readiness_agent.json
+        usecase_agent.json
+        scoring_agent.json
+        writer_agent.json
+      exports/
+        deck.json
+        backlog.csv
+        architecture_pack.md
+      logs/
+        events.jsonl
+
