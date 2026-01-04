@@ -1,13 +1,10 @@
-from __future__ import annotations
-
-import time
-from uuid import uuid4
-from typing import Any, Dict, List, Optional
-
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
+import time
 
 from .db import init_db, execute, fetch_one, fetch_all
 from .storage import now_iso, save_document, save_export
@@ -17,8 +14,9 @@ from .run_store import (
     persist_stage_snapshot,
     append_event,
     refresh_run_files,
-    run_dir,
+    persist_artifact,
 )
+
 
 STAGES = [
     "transcribe",
@@ -31,11 +29,6 @@ STAGES = [
     "export",
 ]
 
-
-def api_error(message: str, status: int = 400, code: str = "bad_request"):
-    return JSONResponse(status_code=status, content={"message": message, "code": code})
-
-
 app = FastAPI(title="AI Audit API (local v0)", version="0.1")
 
 app.add_middleware(
@@ -47,6 +40,15 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root():
+    return {"ok": True, "service": "ai-audit-api"}
+
+
+def api_error(message: str, status: int = 400, code: str = "bad_request"):
+    return JSONResponse(status_code=status, content={"message": message, "code": code})
+
+
 @app.on_event("startup")
 def _startup():
     init_db()
@@ -56,11 +58,6 @@ def _startup():
 async def http_exception_handler(_: Request, exc: HTTPException):
     msg = str(exc.detail) if exc.detail else "Request failed"
     return api_error(msg, status=exc.status_code, code="http_error")
-
-
-@app.get("/")
-def root():
-    return {"ok": True, "service": "ai-audit-api"}
 
 
 # ---------- Models ----------
@@ -108,14 +105,14 @@ def get_workspace_or_404(workspace_id: str) -> Dict[str, Any]:
     return w
 
 
-def fetch_documents(workspace_id: str) -> List[Dict[str, Any]]:
+def fetch_documents(workspace_id: str):
     return fetch_all(
         "SELECT id, filename, status, uploaded_at FROM documents WHERE workspace_id=? ORDER BY uploaded_at DESC",
         (workspace_id,),
     )
 
 
-def fetch_interviews(workspace_id: str) -> List[Dict[str, Any]]:
+def fetch_interviews(workspace_id: str):
     return fetch_all(
         "SELECT id, stakeholder_name, role, function, status, created_at, audio_path, transcript_path "
         "FROM interviews WHERE workspace_id=? ORDER BY created_at DESC",
@@ -131,10 +128,7 @@ def latest_run(workspace_id: str) -> Optional[Dict[str, Any]]:
 
 
 def stages_for_run(run_id: str) -> List[Dict[str, Any]]:
-    return fetch_all(
-        "SELECT name, status, started_at, finished_at FROM pipeline_stages WHERE run_id=? ORDER BY id ASC",
-        (run_id,),
-    )
+    return fetch_all("SELECT name, status FROM pipeline_stages WHERE run_id=? ORDER BY id ASC", (run_id,))
 
 
 def set_stage_status(run_id: str, stage_name: str, status: str):
@@ -163,90 +157,89 @@ def update_run_status(run_id: str, status: str):
     )
 
 
-# ---------- Pipeline worker ----------
 def pipeline_worker(workspace_id: str, run_id: str):
-    # mark running
     update_run_status(run_id, "running")
     persist_run_meta(workspace_id, run_id, {"status": "running"})
-    append_event(workspace_id, run_id, {"type": "run.started"})
+    append_event(workspace_id, run_id, {"stage": "run", "level": "info", "msg": "Run started"})
     refresh_run_files(workspace_id, run_id)
 
     for s in STAGES:
         run = fetch_one("SELECT status FROM pipeline_runs WHERE run_id=?", (run_id,))
         if not run or run["status"] in ("failed", "cancelled"):
-            append_event(workspace_id, run_id, {"type": "run.stopped", "reason": run["status"] if run else "missing"})
+            append_event(workspace_id, run_id, {"stage": "run", "level": "warn", "msg": "Run stopped early"})
             refresh_run_files(workspace_id, run_id)
             return
 
         set_stage_status(run_id, s, "running")
+        append_event(workspace_id, run_id, {"stage": s, "level": "info", "msg": "Stage running"})
         persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
-        append_event(workspace_id, run_id, {"type": "stage.running", "stage": s})
         refresh_run_files(workspace_id, run_id)
 
-        # simulate stage work (and actually create outputs during export stage)
-        time.sleep(1.0)
-
-        if s == "evidence_map":
-            artefacts_dir = run_dir(workspace_id, run_id) / "artefacts"
-            artefacts_dir.mkdir(parents=True, exist_ok=True)
-            (artefacts_dir / "evidence_map_agent.json").write_text('{"placeholder": true, "stage": "evidence_map"}\n', encoding="utf-8")
-
-        if s == "readiness":
-            artefacts_dir = run_dir(workspace_id, run_id) / "artefacts"
-            (artefacts_dir / "readiness_agent.json").write_text('{"placeholder": true, "stage": "readiness"}\n', encoding="utf-8")
-
-        if s == "usecases":
-            artefacts_dir = run_dir(workspace_id, run_id) / "artefacts"
-            (artefacts_dir / "usecase_agent.json").write_text('{"placeholder": true, "stage": "usecases"}\n', encoding="utf-8")
-
-        if s == "scoring":
-            artefacts_dir = run_dir(workspace_id, run_id) / "artefacts"
-            (artefacts_dir / "scoring_agent.json").write_text('{"placeholder": true, "stage": "scoring"}\n', encoding="utf-8")
-
-        if s == "writer":
-            artefacts_dir = run_dir(workspace_id, run_id) / "artefacts"
-            (artefacts_dir / "writer_agent.json").write_text('{"placeholder": true, "stage": "writer"}\n', encoding="utf-8")
-
-        if s == "export":
-            # Create placeholder exports on completion
-            deck_bytes = b'{"deck":"placeholder"}\n'
-            deck_id, deck_path = save_export(workspace_id, "deck", deck_bytes, "deck.json")
-            execute(
-                "INSERT INTO exports (id, workspace_id, kind, version, created_at, path, download_name) VALUES (?,?,?,?,?,?,?)",
-                (deck_id, workspace_id, "deck", "v0.1", now_iso(), deck_path, "deck.json"),
-            )
-
-            backlog_bytes = b"epic,story,description\nFoundation,Create workspace,Create workspace and persist\n"
-            backlog_id, backlog_path = save_export(workspace_id, "backlog_csv", backlog_bytes, "backlog.csv")
-            execute(
-                "INSERT INTO exports (id, workspace_id, kind, version, created_at, path, download_name) VALUES (?,?,?,?,?,?,?)",
-                (backlog_id, workspace_id, "backlog_csv", "v0.1", now_iso(), backlog_path, "backlog.csv"),
-            )
-
-            arch_bytes = b"# Architecture Pack (placeholder)\n\nLocal v0.\n"
-            arch_id, arch_path = save_export(workspace_id, "architecture_pack", arch_bytes, "architecture_pack.md")
-            execute(
-                "INSERT INTO exports (id, workspace_id, kind, version, created_at, path, download_name) VALUES (?,?,?,?,?,?,?)",
-                (arch_id, workspace_id, "architecture_pack", "v0.1", now_iso(), arch_path, "architecture_pack.md"),
-            )
-
-            # Also copy them into the run folder (nice for NotebookLM / debugging)
-            exports_dir = run_dir(workspace_id, run_id) / "exports"
-            exports_dir.mkdir(parents=True, exist_ok=True)
-            (exports_dir / "deck.json").write_bytes(deck_bytes)
-            (exports_dir / "backlog.csv").write_bytes(backlog_bytes)
-            (exports_dir / "architecture_pack.md").write_bytes(arch_bytes)
-
-            append_event(workspace_id, run_id, {"type": "exports.created", "items": 3})
+        time.sleep(1.2)  # simulate work
 
         set_stage_status(run_id, s, "done")
+        append_event(workspace_id, run_id, {"stage": s, "level": "info", "msg": "Stage done"})
         persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
-        append_event(workspace_id, run_id, {"type": "stage.done", "stage": s})
         refresh_run_files(workspace_id, run_id)
+
+        # --- Persist artefacts for key stages (placeholder outputs for v0) ---
+        if s in ("evidence_map", "readiness", "usecases", "scoring", "writer"):
+            name_map = {
+                "evidence_map": "evidence_map_agent.json",
+                "readiness": "readiness_agent.json",
+                "usecases": "usecase_agent.json",
+                "scoring": "scoring_agent.json",
+                "writer": "writer_agent.json",
+            }
+            payload = {
+                "workspaceId": workspace_id,
+                "runId": run_id,
+                "kind": s,
+                "generatedAt": now_iso(),
+                "data": [],  # placeholder
+            }
+            persist_artifact(
+                workspace_id,
+                run_id,
+                name=name_map[s],
+                kind=s,
+                payload=payload,
+                status="created",
+            )
+
+
+    # Create placeholder exports on completion
+    deck_id, deck_path = save_export(workspace_id, "deck", b'{"deck":"placeholder"}\n', "deck.json")
+    execute(
+        "INSERT INTO exports (id, workspace_id, kind, version, created_at, path, download_name) VALUES (?,?,?,?,?,?,?)",
+        (deck_id, workspace_id, "deck", "v0.1", now_iso(), deck_path, "deck.json"),
+    )
+
+    backlog_id, backlog_path = save_export(
+        workspace_id,
+        "backlog_csv",
+        b"epic,story,description\nFoundation,Create workspace,Create workspace and persist\n",
+        "backlog.csv",
+    )
+    execute(
+        "INSERT INTO exports (id, workspace_id, kind, version, created_at, path, download_name) VALUES (?,?,?,?,?,?,?)",
+        (backlog_id, workspace_id, "backlog_csv", "v0.1", now_iso(), backlog_path, "backlog.csv"),
+    )
+
+    arch_id, arch_path = save_export(
+        workspace_id,
+        "architecture_pack",
+        b"# Architecture Pack (placeholder)\n\nLocal v0.\n",
+        "architecture_pack.md",
+    )
+    execute(
+        "INSERT INTO exports (id, workspace_id, kind, version, created_at, path, download_name) VALUES (?,?,?,?,?,?,?)",
+        (arch_id, workspace_id, "architecture_pack", "v0.1", now_iso(), arch_path, "architecture_pack.md"),
+    )
 
     update_run_status(run_id, "succeeded")
     persist_run_meta(workspace_id, run_id, {"status": "succeeded"})
-    append_event(workspace_id, run_id, {"type": "run.succeeded"})
+    append_event(workspace_id, run_id, {"stage": "run", "level": "info", "msg": "Run succeeded"})
     refresh_run_files(workspace_id, run_id)
 
 
@@ -302,7 +295,11 @@ def delete_workspace(workspace_id: str):
 @app.get("/workspaces/{workspace_id}/documents")
 def list_documents(workspace_id: str):
     get_workspace_or_404(workspace_id)
-    return paginated(fetch_documents(workspace_id))
+    items = fetch_all(
+        "SELECT id, filename, status, uploaded_at FROM documents WHERE workspace_id=? ORDER BY uploaded_at DESC",
+        (workspace_id,),
+    )
+    return paginated(items)
 
 
 @app.post("/workspaces/{workspace_id}/documents")
@@ -386,27 +383,8 @@ def submit_responses(workspace_id: str, interview_id: str, payload: InterviewRes
 def get_pipeline(workspace_id: str):
     get_workspace_or_404(workspace_id)
     run = latest_run(workspace_id)
-
     if not run:
-        run_id = str(uuid4())
-        now = now_iso()
-        execute(
-            "INSERT INTO pipeline_runs (run_id, workspace_id, mode, status, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-            (run_id, workspace_id, "draft", "queued", now, now),
-        )
-        for s in STAGES:
-            execute("INSERT INTO pipeline_stages (run_id, name, status) VALUES (?,?,?)", (run_id, s, "queued"))
-
-        docs = fetch_documents(workspace_id)
-        itvs = fetch_interviews(workspace_id)
-        persist_inputs(workspace_id, run_id, documents=docs, interviews=itvs)
-        persist_run_meta(workspace_id, run_id, {"status": "queued", "mode": "draft", "createdAt": now})
-        persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
-        append_event(workspace_id, run_id, {"type": "run.queued", "documents": len(docs), "interviews": len(itvs)})
-        refresh_run_files(workspace_id, run_id)
-
-        run = fetch_one("SELECT * FROM pipeline_runs WHERE run_id=?", (run_id,))
-
+        return {"data": {"runId": None, "status": "queued", "stages": []}}
     stages = stages_for_run(run["run_id"])
     return {"data": {"runId": run["run_id"], "status": run["status"], "stages": stages}}
 
@@ -428,10 +406,7 @@ def cancel_pipeline(workspace_id: str):
         "UPDATE pipeline_stages SET status='cancelled', finished_at=? WHERE run_id=? AND status='running'",
         (now_iso(), run["run_id"]),
     )
-
-    persist_run_meta(workspace_id, run["run_id"], {"status": "cancelled"})
-    persist_stage_snapshot(workspace_id, run["run_id"], stages_for_run(run["run_id"]))
-    append_event(workspace_id, run["run_id"], {"type": "run.cancelled"})
+    append_event(workspace_id, run["run_id"], {"stage": "run", "level": "warn", "msg": "Run cancelled"})
     refresh_run_files(workspace_id, run["run_id"])
 
     stages = stages_for_run(run["run_id"])
@@ -444,6 +419,7 @@ def run_pipeline(workspace_id: str, req: PipelineRunRequest, background: Backgro
 
     run_id = str(uuid4())
     now = now_iso()
+
     execute(
         "INSERT INTO pipeline_runs (run_id, workspace_id, mode, status, created_at, updated_at) VALUES (?,?,?,?,?,?)",
         (run_id, workspace_id, req.mode, "queued", now, now),
@@ -455,10 +431,19 @@ def run_pipeline(workspace_id: str, req: PipelineRunRequest, background: Backgro
     docs = fetch_documents(workspace_id)
     itvs = fetch_interviews(workspace_id)
 
+    persist_run_meta(workspace_id, run_id, {
+        "mode": req.mode,
+        "createdAt": now,
+        "status": "queued",
+    })
     persist_inputs(workspace_id, run_id, documents=docs, interviews=itvs)
-    persist_run_meta(workspace_id, run_id, {"status": "queued", "mode": req.mode, "createdAt": now})
     persist_stage_snapshot(workspace_id, run_id, stages_for_run(run_id))
-    append_event(workspace_id, run_id, {"type": "run.queued", "documents": len(docs), "interviews": len(itvs)})
+    append_event(workspace_id, run_id, {
+        "stage": "run",
+        "level": "info",
+        "msg": "Run created and inputs snapshotted",
+        "extra": {"documents": len(docs), "interviews": len(itvs)},
+    })
     refresh_run_files(workspace_id, run_id)
 
     background.add_task(pipeline_worker, workspace_id, run_id)
@@ -511,15 +496,7 @@ def create_export(workspace_id: str, req: ExportRequest):
         "INSERT INTO exports (id, workspace_id, kind, version, created_at, path, download_name) VALUES (?,?,?,?,?,?,?)",
         (export_id, workspace_id, kind, version, created, path, download_name),
     )
-    return {
-        "data": {
-            "id": export_id,
-            "kind": kind,
-            "version": version,
-            "created_at": created,
-            "downloadUrl": f"/workspaces/{workspace_id}/exports/{export_id}/download",
-        }
-    }
+    return {"data": {"id": export_id, "kind": kind, "version": version, "created_at": created, "downloadUrl": f"/workspaces/{workspace_id}/exports/{export_id}/download"}}
 
 
 @app.get("/workspaces/{workspace_id}/exports/{export_id}/download")
@@ -529,3 +506,29 @@ def download_export(workspace_id: str, export_id: str):
     if not ex:
         raise HTTPException(status_code=404, detail="Export not found")
     return FileResponse(ex["path"], filename=ex["download_name"])
+
+
+# ---------- Download Artifacts API ----------
+@app.get("/workspaces/{workspace_id}/runs/{run_id}/artifacts")
+def list_run_artifacts(workspace_id: str, run_id: str):
+    get_workspace_or_404(workspace_id)
+    items = fetch_all(
+        "SELECT id, name, kind, schema_id, status, created_at FROM run_artifacts "
+        "WHERE workspace_id=? AND run_id=? ORDER BY created_at DESC",
+        (workspace_id, run_id),
+    )
+    for it in items:
+        it["downloadUrl"] = f"/workspaces/{workspace_id}/runs/{run_id}/artifacts/{it['id']}/download"
+    return paginated(items)
+
+
+@app.get("/workspaces/{workspace_id}/runs/{run_id}/artifacts/{artifact_id}/download")
+def download_artifact(workspace_id: str, run_id: str, artifact_id: str):
+    get_workspace_or_404(workspace_id)
+    a = fetch_one(
+        "SELECT * FROM run_artifacts WHERE id=? AND workspace_id=? AND run_id=?",
+        (artifact_id, workspace_id, run_id),
+    )
+    if not a:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return FileResponse(a["path"], filename=a["name"])
