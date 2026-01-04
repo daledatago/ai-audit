@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local API persistence
+services/api/.data/
+services/api/**/*.sqlite3
+
