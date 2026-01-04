@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# local runtime
+# Local API persistence
 services/api/.data/
 services/api/**/*.sqlite3
 
