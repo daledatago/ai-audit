@@ -7,8 +7,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Write-Info($msg) { Write-Host "[smoke] $msg" -ForegroundColor Cyan }
-function Write-Warn($msg) { Write-Host "[smoke] $msg" -ForegroundColor Yellow }
+function Write-Info([string]$msg) { Write-Host "[smoke] $msg" -ForegroundColor Cyan }
+function Write-Warn([string]$msg) { Write-Host "[smoke] $msg" -ForegroundColor Yellow }
 
 function Join-Url([string]$base, [string]$path) {
   if ($base.EndsWith("/")) { $base = $base.TrimEnd("/") }
@@ -17,13 +17,13 @@ function Join-Url([string]$base, [string]$path) {
 }
 
 # 0) ensure API is reachable
-Write-Info "Checking API: $ApiBase/openapi.json"
+Write-Info "Checking API: $(Join-Url $ApiBase "/openapi.json")"
 $open = Invoke-RestMethod -Uri (Join-Url $ApiBase "/openapi.json")
 Write-Info "OK: API reachable."
 
 # output folder
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$OutDir = Join-Path $RepoRoot ("tmp/smoke_" + (Get-Date).ToString("yyyyMMdd_HHmmss"))
+$OutDir = Join-Path $RepoRoot ("tmp\smoke_" + (Get-Date).ToString("yyyyMMdd_HHmmss"))
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 Write-Info "Output dir: $OutDir"
 
@@ -46,7 +46,7 @@ while ($true) {
   $runStatus = $statusResp.data.status
   $stages = $statusResp.data.stages
 
-  $stageLine = ($stages | ForEach-Object { "$($_.name)=$($_.status)" }) -join ", showin"
+  $stageLine = ($stages | ForEach-Object { "$($_.name)=$($_.status)" }) -join ", "
   Write-Info "status=$runStatus | $stageLine"
 
   if ($runStatus -in @("succeeded","failed","cancelled")) { break }
@@ -100,5 +100,4 @@ foreach ($ex in $exports.items) {
   Write-Info "Saved: $exOut"
 }
 
-Write-Info "SMOKE TEST COMPLETE ✅"
-
+Write-Info "SMOKE TEST COMPLETE"

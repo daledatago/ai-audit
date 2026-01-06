@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+from datetime import datetime, timezone
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -149,6 +150,19 @@ def update_run_status(run_id: str, status: str):
         (status, now_iso(), run_id)
     )
 
+def reconcile_run_if_complete(run_id: str) -> None:
+    """
+    Safety net:
+    If run is still 'running' but all stages are 'done', mark run as 'succeeded'.
+    """
+    run = fetch_one("SELECT status FROM pipeline_runs WHERE run_id=?", (run_id,))
+    if not run or run["status"] != "running":
+        return
+
+    stages = fetch_all("SELECT status FROM pipeline_stages WHERE run_id=?", (run_id,))
+    if stages and all(s["status"] == "done" for s in stages):
+        update_run_status(run_id, "succeeded")
+
 # ---------- Artefact persistence ----------
 _ARTEFACT_FILENAME_BY_STAGE = {
     "evidence_map": "evidence_map_agent.json",
@@ -231,16 +245,12 @@ def pipeline_worker(workspace_id: str, run_id: str):
         refresh_run_files(workspace_id, run_id)
 
     # exports (also copy into run exports folder for convenience)
+        # exports (DB + workspace export folder)
     deck_id, deck_path = save_export(workspace_id, "deck", b'{"deck":"placeholder"}\n', "deck.json")
     execute(
         "INSERT INTO exports (id, workspace_id, kind, version, created_at, path, download_name) VALUES (?,?,?,?,?,?,?)",
         (deck_id, workspace_id, "deck", "v0.1", now_iso(), deck_path, "deck.json")
     )
-    (run_dir(workspace_id, run_id) / "exports").mkdir(parents=True, exist_ok=True)
-    try:
-        Path(deck_path).write_bytes(Path(deck_path).read_bytes())
-    except Exception:
-        pass
 
     backlog_id, backlog_path = save_export(
         workspace_id, "backlog_csv",
@@ -262,10 +272,20 @@ def pipeline_worker(workspace_id: str, run_id: str):
         (arch_id, workspace_id, "architecture_pack", "v0.1", now_iso(), arch_path, "architecture_pack.md")
     )
 
-    update_run_status(run_id, "succeeded")
-    persist_run_meta(workspace_id, run_id, {"status": "succeeded"})
-    append_event(workspace_id, run_id, {"stage": "run", "level": "info", "msg": "Run succeeded"})
-    refresh_run_files(workspace_id, run_id)
+    # ALSO copy exports into the run folder for convenience:
+    from shutil import copy2
+
+    run_exports_dir = run_dir(workspace_id, run_id) / "exports"
+    run_exports_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        copy2(deck_path, run_exports_dir / "deck.json")
+        copy2(backlog_path, run_exports_dir / "backlog.csv")
+        copy2(arch_path, run_exports_dir / "architecture_pack.md")
+        append_event(workspace_id, run_id, {"stage": "export", "level": "info", "msg": "Copied exports into run folder"})
+    except Exception as e:
+        append_event(workspace_id, run_id, {"stage": "export", "level": "warn", "msg": f"Failed copying exports into run folder: {e}"})
+
 
 # ---------- Workspace API ----------
 @app.get("/workspaces")
@@ -477,7 +497,20 @@ def pipeline_status(workspace_id: str):
     run = latest_run(workspace_id)
     if not run:
         return {"data": {"runId": None, "status": "queued", "stages": []}}
-    return {"data": {"runId": run["run_id"], "status": run["status"], "stages": stages_for_run(run["run_id"])}}
+
+    # safety net: if stages are all done but status didn't flip, fix it
+    reconcile_run_if_complete(run["run_id"])
+
+    # re-read run after potential update
+    run = fetch_one("SELECT * FROM pipeline_runs WHERE run_id=?", (run["run_id"],))
+
+    return {
+        "data": {
+            "runId": run["run_id"],
+            "status": run["status"],
+            "stages": stages_for_run(run["run_id"]),
+        }
+    }
 
 # ---------- Run Artefacts API (this is what you were calling) ----------
 @app.get("/workspaces/{workspace_id}/runs/{run_id}/artifacts")
@@ -564,3 +597,55 @@ def download_export(workspace_id: str, export_id: str):
     if not ex:
         raise HTTPException(status_code=404, detail="Export not found")
     return FileResponse(ex["path"], filename=ex["download_name"])
+
+# --- helper: ensure run exists for workspace (DB truth) ---
+def get_run_or_404(workspace_id: str, run_id: str) -> Dict[str, Any]:
+    r = fetch_one(
+        "SELECT run_id, workspace_id FROM pipeline_runs WHERE run_id=? AND workspace_id=?",
+        (run_id, workspace_id),
+    )
+    if not r:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return r
+
+# ---------- Run Exports API (exports under the run folder) ----------
+@app.get("/workspaces/{workspace_id}/runs/{run_id}/exports")
+def list_run_exports(workspace_id: str, run_id: str):
+    get_workspace_or_404(workspace_id)
+    get_run_or_404(workspace_id, run_id)
+
+    exports_dir = run_dir(workspace_id, run_id) / "exports"
+    exports_dir.mkdir(parents=True, exist_ok=True)
+
+    items: List[Dict[str, Any]] = []
+    for p in sorted(exports_dir.iterdir()):
+        if not p.is_file():
+            continue
+        stat = p.stat()
+        items.append(
+            {
+                "name": p.name,
+                "bytes": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                "downloadUrl": f"/workspaces/{workspace_id}/runs/{run_id}/exports/{p.name}/download",
+            }
+        )
+
+    return paginated(items)
+
+@app.get("/workspaces/{workspace_id}/runs/{run_id}/exports/{filename}/download")
+def download_run_export(workspace_id: str, run_id: str, filename: str):
+    get_workspace_or_404(workspace_id)
+    get_run_or_404(workspace_id, run_id)
+
+    exports_dir = (run_dir(workspace_id, run_id) / "exports").resolve()
+    candidate = (exports_dir / filename).resolve()
+
+    # path traversal protection
+    if exports_dir not in candidate.parents and candidate != exports_dir:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Run export not found")
+
+    return FileResponse(str(candidate), filename=filename)

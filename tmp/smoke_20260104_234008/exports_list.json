@@ -1,0 +1,28 @@
+﻿{
+    "items":  [
+                  {
+                      "id":  "b3f31e19-8c72-4ad7-807f-216cca6974c8",
+                      "kind":  "architecture_pack",
+                      "version":  "v0.1",
+                      "created_at":  "2026-01-04T23:40:19.032193Z",
+                      "downloadUrl":  "/workspaces/d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc/exports/b3f31e19-8c72-4ad7-807f-216cca6974c8/download"
+                  },
+                  {
+                      "id":  "c5d9e0ac-8ce1-42d0-989c-93611350d251",
+                      "kind":  "backlog_csv",
+                      "version":  "v0.1",
+                      "created_at":  "2026-01-04T23:40:19.024083Z",
+                      "downloadUrl":  "/workspaces/d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc/exports/c5d9e0ac-8ce1-42d0-989c-93611350d251/download"
+                  },
+                  {
+                      "id":  "e01bccbd-b681-402b-acd3-9283fd6f14cf",
+                      "kind":  "deck",
+                      "version":  "v0.1",
+                      "created_at":  "2026-01-04T23:40:19.000905Z",
+                      "downloadUrl":  "/workspaces/d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc/exports/e01bccbd-b681-402b-acd3-9283fd6f14cf/download"
+                  }
+              ],
+    "total":  3,
+    "page":  1,
+    "pageSize":  50
+}

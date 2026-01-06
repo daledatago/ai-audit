@@ -1,0 +1,47 @@
+﻿{
+    "items":  [
+                  {
+                      "id":  "71f52040-fc06-48fc-b99f-26ba71ee7d91",
+                      "name":  "writer_agent.json",
+                      "kind":  "writer",
+                      "status":  "created",
+                      "created_at":  "2026-01-04T23:40:17.762750Z",
+                      "downloadUrl":  "/workspaces/d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc/runs/da5dc323-3008-4383-b254-92bab0b064f0/artifacts/71f52040-fc06-48fc-b99f-26ba71ee7d91/download"
+                  },
+                  {
+                      "id":  "bd8c20a8-c69f-4d99-8a87-a7cce5f4d7bc",
+                      "name":  "scoring_agent.json",
+                      "kind":  "scoring",
+                      "status":  "created",
+                      "created_at":  "2026-01-04T23:40:16.519163Z",
+                      "downloadUrl":  "/workspaces/d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc/runs/da5dc323-3008-4383-b254-92bab0b064f0/artifacts/bd8c20a8-c69f-4d99-8a87-a7cce5f4d7bc/download"
+                  },
+                  {
+                      "id":  "e55134ef-43e8-46bc-a8a0-a09120ea480d",
+                      "name":  "usecase_agent.json",
+                      "kind":  "usecases",
+                      "status":  "created",
+                      "created_at":  "2026-01-04T23:40:15.275722Z",
+                      "downloadUrl":  "/workspaces/d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc/runs/da5dc323-3008-4383-b254-92bab0b064f0/artifacts/e55134ef-43e8-46bc-a8a0-a09120ea480d/download"
+                  },
+                  {
+                      "id":  "40e6181f-0915-4e79-9d64-f7835b2d4cc3",
+                      "name":  "readiness_agent.json",
+                      "kind":  "readiness",
+                      "status":  "created",
+                      "created_at":  "2026-01-04T23:40:14.029079Z",
+                      "downloadUrl":  "/workspaces/d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc/runs/da5dc323-3008-4383-b254-92bab0b064f0/artifacts/40e6181f-0915-4e79-9d64-f7835b2d4cc3/download"
+                  },
+                  {
+                      "id":  "38f9a9a4-7d22-41dc-a35f-0cf05488eaaf",
+                      "name":  "evidence_map_agent.json",
+                      "kind":  "evidence_map",
+                      "status":  "created",
+                      "created_at":  "2026-01-04T23:40:12.778125Z",
+                      "downloadUrl":  "/workspaces/d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc/runs/da5dc323-3008-4383-b254-92bab0b064f0/artifacts/38f9a9a4-7d22-41dc-a35f-0cf05488eaaf/download"
+                  }
+              ],
+    "total":  5,
+    "page":  1,
+    "pageSize":  50
+}

@@ -1,0 +1,13 @@
+{
+  "id": "71f52040-fc06-48fc-b99f-26ba71ee7d91",
+  "workspaceId": "d3affeaa-bdca-40f8-bfaa-ffe88e80a9fc",
+  "runId": "da5dc323-3008-4383-b254-92bab0b064f0",
+  "kind": "writer",
+  "name": "writer_agent.json",
+  "status": "created",
+  "createdAt": "2026-01-04T23:40:17.762750Z",
+  "data": {
+    "note": "placeholder artefact (local v0)",
+    "stage": "writer"
+  }
+}
